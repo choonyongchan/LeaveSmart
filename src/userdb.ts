@@ -1,6 +1,6 @@
 import { createClient } from 'redis';
 
-class UserDB {
+export class UserDB {
 
     private static KEY: string = 'msgId';
     private db: Promise<any>;
@@ -32,6 +32,6 @@ class UserDB {
     }
 }
 
-const db: UserDB = new UserDB();
-db.set('Hello');
-db.get().then((values) => console.log(values));
+// const db: UserDB = new UserDB();
+// db.set('Hello');
+// db.get().then((values) => console.log(values));

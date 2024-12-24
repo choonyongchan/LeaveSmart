@@ -9,6 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.UserDB = void 0;
 const redis_1 = require("redis");
 class UserDB {
     constructor() {
@@ -41,7 +42,8 @@ class UserDB {
         });
     }
 }
+exports.UserDB = UserDB;
 UserDB.KEY = 'msgId';
-const db = new UserDB();
-db.set('Hello');
-db.get().then((values) => console.log(values));
+// const db: UserDB = new UserDB();
+// db.set('Hello');
+// db.get().then((values) => console.log(values));

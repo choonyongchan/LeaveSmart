@@ -9,7 +9,7 @@ type RealTimePrecipitationData = {
     precipitation: number;
 }
 
-type WeatherData = {
+export type WeatherData = {
     timestamp: Date;
     twohr_forecast: string;
     rain_status_now: boolean;

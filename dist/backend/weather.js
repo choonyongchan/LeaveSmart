@@ -40,11 +40,11 @@ class WeatherAPI {
         const forecastItem = data.data.items[0];
         const updateTimestamp = new Date(forecastItem.update_timestamp);
         const validPeriod = forecastItem.valid_period.text;
-        const forecast = forecastItem.forecasts.find((forecast) => forecast.area === "Pasir Ris").forecast;
+        const forecast = forecastItem.forecasts.find((forecast) => forecast.area === 'Pasir Ris').forecast;
         return {
-            "update_timestamp": updateTimestamp,
-            "valid_period": validPeriod,
-            "forecast": forecast
+            update_timestamp: updateTimestamp,
+            valid_period: validPeriod,
+            forecast: forecast,
         };
     }
     /**
@@ -57,11 +57,11 @@ class WeatherAPI {
     static parseRealTimePrecipitationData(data) {
         // At time of writing, 2 weather stations are located in Pasir Ris. S94: Street 51. S29: Drive 12.
         const timestamp = new Date(data.data.readings[0].timestamp);
-        const id = data.data.stations.find((station) => station.name.startsWith("Pasir Ris Street 51")).id;
+        const id = data.data.stations.find((station) => station.name.startsWith('Pasir Ris Street 51')).id;
         const precipitate = data.data.readings[0].data.find((reading) => reading.stationId === id).value;
         return {
-            "timestamp": timestamp,
-            "precipitation": precipitate
+            timestamp: timestamp,
+            precipitation: precipitate,
         };
     }
     /**
@@ -71,25 +71,29 @@ class WeatherAPI {
      */
     static getForecast() {
         return __awaiter(this, void 0, void 0, function* () {
-            const apis = [this.TWOHRFORECASTAPI, this.REALTIMEPRECIPITATIONAPI];
+            const apis = [
+                this.TWOHRFORECASTAPI,
+                this.REALTIMEPRECIPITATIONAPI,
+            ];
             const [twoHrForecastJSON, realTimePrecipitationJSON] = yield Promise.all(apis.map((api) => this.getData(api)));
             const twoHrForecastData = this.parseTwoHrForecastData(twoHrForecastJSON);
             const realTimePrecipitationData = this.parseRealTimePrecipitationData(realTimePrecipitationJSON);
-            const earliestTimestamp = ( // Records the most outdated timestamp
-            twoHrForecastData.update_timestamp < realTimePrecipitationData.timestamp
+            const earliestTimestamp = // Records the most outdated timestamp
+             twoHrForecastData.update_timestamp < realTimePrecipitationData.timestamp
                 ? twoHrForecastData.update_timestamp
-                : realTimePrecipitationData.timestamp);
+                : realTimePrecipitationData.timestamp;
             return {
-                "timestamp": earliestTimestamp,
-                "twohr_forecast": twoHrForecastData.forecast,
-                "rain_status_now": (realTimePrecipitationData.precipitation > WeatherAPI.PRECIPITATION_THRESHOLD)
+                timestamp: earliestTimestamp,
+                twohr_forecast: twoHrForecastData.forecast,
+                rain_status_now: realTimePrecipitationData.precipitation >
+                    WeatherAPI.PRECIPITATION_THRESHOLD,
             };
         });
     }
 }
 exports.WeatherAPI = WeatherAPI;
-WeatherAPI.TWOHRFORECASTAPI = "https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast";
-WeatherAPI.REALTIMEPRECIPITATIONAPI = "https://api-open.data.gov.sg/v2/real-time/api/rainfall";
+WeatherAPI.TWOHRFORECASTAPI = 'https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast';
+WeatherAPI.REALTIMEPRECIPITATIONAPI = 'https://api-open.data.gov.sg/v2/real-time/api/rainfall';
 WeatherAPI.PRECIPITATION_THRESHOLD = 0;
 // WeatherAPI.getForecast().then((forecast: WeatherData) => {
 //     console.log(`The forecast for Pasir Ris is ${forecast.twohr_forecast}. It is currently ${forecast.rain_status_now ? 'raining' : 'not raining'}`);

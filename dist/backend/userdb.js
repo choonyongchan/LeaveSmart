@@ -13,9 +13,9 @@ exports.UserDB = void 0;
 const redis_1 = require("redis");
 class UserDB {
     constructor() {
-        this.db = ((0, redis_1.createClient)()
+        this.db = (0, redis_1.createClient)()
             .on('error', (err) => console.error('Redis error: ', err))
-            .connect());
+            .connect();
     }
     health() {
         return __awaiter(this, void 0, void 0, function* () {

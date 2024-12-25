@@ -97,7 +97,7 @@ class Whatsapp {
     static sleep() {
         return __awaiter(this, void 0, void 0, function* () {
             const ms = Whatsapp.INTERVALMINS * 60 * 1000;
-            yield new Promise((resolve) => setTimeout(resolve, ms));
+            yield new Promise(resolve => setTimeout(resolve, ms));
         });
     }
     static watch() {
@@ -113,7 +113,11 @@ class Whatsapp {
             // Send weather forecast to all clients
             while (true) {
                 const now = new Date();
-                const nowString = now.toLocaleTimeString("en-SG", { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit' });
+                const nowString = now.toLocaleTimeString('en-SG', {
+                    timeZone: 'Asia/Singapore',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
                 console.log(`Update: ${nowString}`);
                 const forecast = yield weather_1.WeatherAPI.getForecast();
                 // Part 1: Two Hr Forecast
@@ -126,7 +130,7 @@ class Whatsapp {
                 // Part 2: Current Raining
                 if (forecast.rain_status_now && !Whatsapp.rainFlag) {
                     const msgId = yield Whatsapp.db.get();
-                    yield Promise.all(msgId.map((id) => Whatsapp.reply(id, `It has started raining in Pasir Ris!`)));
+                    yield Promise.all(msgId.map((id) => Whatsapp.reply(id, 'It has started raining in Pasir Ris!')));
                 }
                 Whatsapp.rainFlag = forecast.rain_status_now; // Update rainFlag
                 yield this.sleep(); // Default: 10 mins because NEA Api updates every 10 mins
@@ -134,13 +138,13 @@ class Whatsapp {
         });
     }
     constructor() {
-        this.client = (new whatsapp_web_js_1.Client({ authStrategy: new whatsapp_web_js_1.LocalAuth(), })
+        this.client = new whatsapp_web_js_1.Client({ authStrategy: new whatsapp_web_js_1.LocalAuth() })
             .on('qr', Whatsapp.onQr)
             .on('authenticated', Whatsapp.onAuthenticated)
             .on('ready', Whatsapp.onReady)
             .on('disconnected', Whatsapp.onDisconnected)
             .on('auth_failure', Whatsapp.onAuthFailure)
-            .on('message_create', Whatsapp.onMessageCreate));
+            .on('message_create', Whatsapp.onMessageCreate);
     }
     initialize() {
         return __awaiter(this, void 0, void 0, function* () {

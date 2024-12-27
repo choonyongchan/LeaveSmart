@@ -19,11 +19,9 @@ export type WeatherData = {
  * WeatherAPI retrieves SG Weather Info from the Data.gov API.
  */
 export class WeatherAPI {
-  private static TWOHRFORECASTAPI =
-    'https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast';
-  private static REALTIMEPRECIPITATIONAPI =
-    'https://api-open.data.gov.sg/v2/real-time/api/rainfall';
-  private static PRECIPITATION_THRESHOLD = 0;
+  private readonly TWOHRFORECASTAPI = 'https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast';
+  private readonly REALTIMEPRECIPITATIONAPI = 'https://api-open.data.gov.sg/v2/real-time/api/rainfall';
+  private readonly PRECIPITATION_THRESHOLD = 0;
 
   /**
    * Fetches data from the API.
@@ -32,10 +30,10 @@ export class WeatherAPI {
    *
    * @returns The JSON object fetched.
    */
-  private static async getData(api: string): Promise<any> {
+  private async getData(api: string): Promise<any> {
     const response: Response = await fetch(api);
     if (!response.ok) throw new Error('Failed to fetch data');
-    return await response.json();
+    return response.json();
   }
 
   /**
@@ -45,7 +43,7 @@ export class WeatherAPI {
    *
    * @returns The 2-hour forecast data.
    */
-  private static parseTwoHrForecastData(data: any): TwoHrForecastData {
+  private parseTwoHrForecastData(data: any): TwoHrForecastData {
     const forecastItem: any = data.data.items[0];
     const updateTimestamp: Date = new Date(forecastItem.update_timestamp);
     const validPeriod: string = forecastItem.valid_period.text;
@@ -66,10 +64,10 @@ export class WeatherAPI {
    *
    * @returns The real-time precipitation data.
    */
-  private static parseRealTimePrecipitationData(
+  private parseRealTimePrecipitationData(
     data: any,
   ): RealTimePrecipitationData {
-    // At time of writing, 2 weather stations are located in Pasir Ris. S94: Street 51. S29: Drive 12.
+    // At time of writing, 2 weather stations are located in Pasir Ris. S94: Street 51. S29: Drive 12.    
     const timestamp: Date = new Date(data.data.readings[0].timestamp);
     const id: string = data.data.stations.find((station: any) =>
       station.name.startsWith('Pasir Ris Street 51'),
@@ -88,16 +86,14 @@ export class WeatherAPI {
    *
    * @returns Weather Data.
    */
-  public static async getForecast(): Promise<WeatherData> {
-    const apis: string[] = [
-      this.TWOHRFORECASTAPI,
-      this.REALTIMEPRECIPITATIONAPI,
-    ];
-    const [twoHrForecastJSON, realTimePrecipitationJSON] = await Promise.all(
-      apis.map((api: string) => this.getData(api)),
-    );
+  public async getForecast(): Promise<WeatherData> {
+    const twoHrForecastJSON: any = await this.getData(this.TWOHRFORECASTAPI);
     const twoHrForecastData: TwoHrForecastData =
       this.parseTwoHrForecastData(twoHrForecastJSON);
+
+    const realTimePrecipitationJSON: any = await this.getData(
+      this.REALTIMEPRECIPITATIONAPI,
+    );
     const realTimePrecipitationData: RealTimePrecipitationData =
       this.parseRealTimePrecipitationData(realTimePrecipitationJSON);
 
@@ -105,17 +101,18 @@ export class WeatherAPI {
       twoHrForecastData.update_timestamp < realTimePrecipitationData.timestamp
         ? twoHrForecastData.update_timestamp
         : realTimePrecipitationData.timestamp;
+    const rainStatusNow: boolean = realTimePrecipitationData.precipitation > this.PRECIPITATION_THRESHOLD;
 
     return {
       timestamp: earliestTimestamp,
       twohr_forecast: twoHrForecastData.forecast,
-      rain_status_now:
-        realTimePrecipitationData.precipitation >
-        WeatherAPI.PRECIPITATION_THRESHOLD,
+      rain_status_now: rainStatusNow,
     };
   }
 }
 
-// WeatherAPI.getForecast().then((forecast: WeatherData) => {
-//     console.log(`The forecast for Pasir Ris is ${forecast.twohr_forecast}. It is currently ${forecast.rain_status_now ? 'raining' : 'not raining'}`);
+// const weatherAPI = new WeatherAPI();
+// weatherAPI.getForecast().then((forecast: WeatherData) => {
+//   console.log(`The forecast for Pasir Ris is ${forecast.twohr_forecast}. It is currently ${forecast.rain_status_now ? 'raining' : 'not raining'}`);
 // });
+

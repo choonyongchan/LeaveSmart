@@ -1,20 +1,27 @@
-import {createClient} from 'redis';
+import {createClient, RedisClientType} from 'redis';
 
+/**
+ * Database to store user data.
+ */
 export class UserDB {
-  private static KEY = 'msgId';
-  private db: Promise<any>;
+  private readonly KEY = 'msgId';
+  private db: RedisClientType;
 
   constructor() {
-    this.db = createClient()
-      .on('error', (err: any) => console.error('Redis error: ', err))
-      .connect();
+    this.db = createClient();
+    this.db.on('error', (err: any) => console.error('Redis error: ', err));
+    this.db.connect();
   }
 
+  /**
+   * Checks if the database is healthy.
+   * 
+   * @returns True if the database is healthy, false otherwise.
+   */
   private async health(): Promise<boolean> {
     try {
-      const db: any = await this.db;
-      await db.set('health', 'ok');
-      const reply: string = await db.get('health');
+      await this.db.set('health', 'ok');
+      const reply: string | null = await this.db.get('health');
       return reply === 'ok';
     } catch (error) {
       console.error('Redis Health Check Failed:', error);
@@ -22,27 +29,48 @@ export class UserDB {
     }
   }
 
+  /**
+   * Adds a message ID to the database.
+   * 
+   * @param msgId The message ID to add.
+   */
   public async add(msgId: string): Promise<void> {
-    const db: any = await this.db;
-    await db.SADD(UserDB.KEY, msgId);
+    await this.db.SADD(this.KEY, msgId);
   }
 
+  /**
+   * Removes a message ID from the database.
+   * 
+   * @param msgId The message ID to remove.
+   */
   public async remove(msgId: string): Promise<void> {
-    const db: any = await this.db;
-    await db.SREM(UserDB.KEY, msgId);
+    await this.db.SREM(this.KEY, msgId);
   }
 
+  /**
+   * Retrieves all message IDs from the database.
+   * 
+   * @return All message IDs in the database.
+   */
   public async get(): Promise<string[]> {
-    const db: any = await this.db;
-    return await db.SMEMBERS(UserDB.KEY);
+    return this.db.SMEMBERS(this.KEY);
   }
 
+  /**
+   * Checks if a message ID is in the database.
+   * 
+   * @param msgId The message ID to check.
+   * 
+   * @returns True if the message ID is in the database, false otherwise.
+   */
   public async has(msgId: string): Promise<boolean> {
-    const db: any = await this.db;
-    return await db.SISMEMBER(UserDB.KEY, msgId);
+    return this.db.SISMEMBER(this.KEY, msgId);
   }
 }
 
 // const db: UserDB = new UserDB();
-// db.set('Hello');
+// db.add('Hello');
+// db.has('Hello').then((value) => console.log(value));
 // db.get().then((values) => console.log(values));
+// db.remove('Hello');
+// db.has('Hello').then((value) => console.log(value));

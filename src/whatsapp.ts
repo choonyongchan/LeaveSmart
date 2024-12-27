@@ -4,156 +4,218 @@ import {Client, LocalAuth} from 'whatsapp-web.js';
 import {UserDB} from './backend/userdb';
 import {WeatherAPI, WeatherData} from './backend/weather';
 
+/**
+ * The main class for the LeaveSmart WhatsApp bot.
+ */
 export class Whatsapp {
-  private static readonly INTERVALMINS: number = 10;
-  private static forecastFlag = false;
-  private static rainFlag = false;
-  private static db: UserDB = new UserDB();
+  private readonly WATCHINTERVAL: number = 30; // Empirically, updates occur every :00, :05, :30, :35 of the hour
+  private readonly LOCALEARG: Intl.LocalesArgument = "en-sg";
+  private readonly DTFMTOPTS: Intl.DateTimeFormatOptions = {
+    timeZone: 'Asia/Singapore',
+    hour: '2-digit',
+    minute: '2-digit',
+  };
+  private prevForecast: boolean = false;
+  private prevRaining: boolean = false;
   private client: Client;
+  private db: UserDB;
+  private weatherApi: WeatherAPI;
 
-  private static onQr(qr: string): void {
+  constructor() {
+    this.client = (
+      new Client({authStrategy: new LocalAuth()})
+      .on('qr', this.onQr)
+      .on('authenticated', this.onAuthenticated)
+      .on('ready', this.onReady)
+      .on('disconnected', this.onDisconnected)
+      .on('auth_failure', this.onAuthFailure)
+      .on('message_create', (message: any) => this.onMessageCreate(message)) // To preserve execution context
+    );
+    this.db = new UserDB();
+    this.weatherApi = new WeatherAPI();
+  }
+
+  /**
+   * Initializes the WhatsApp bot. Must be called before any other methods.
+   */
+  public async initialize(): Promise<void> {
+    await this.client.initialize();
+  }
+
+  /**
+   * Checks if a user is registered in the User DB.
+   * 
+   * @param msgId The message ID to check.
+   * 
+   * @returns True if the user is registered, false otherwise.
+   */
+  private isUserRegistered(msgId: string): Promise<boolean> {
+    return this.db.has(msgId);
+  }
+
+  /**
+   * Checks if the forecast contains rain.
+   * 
+   * @param forecast The forecast to check.
+   * 
+   * @returns True if the forecast contains rain, false otherwise.
+   */
+  private isRainAlert(forecast: string): boolean {
+    return forecast.includes('Showers') || forecast.includes('Rain');
+  }
+
+  // STANDARD CALLBACKS FOR WHATSAPP-WEB.JS
+  /**
+   * Displays the QR code for authentication.
+   * 
+   * @param qr The QR code to display.
+   */
+  private onQr(qr: string): void {
     qrcode.generate(qr, {small: true});
   }
 
-  private static onAuthenticated(session: any): void {
+  /**
+   * Callback for when the client is authenticated.
+   * 
+   * @param session The session object.
+   */
+  private onAuthenticated(session: any): void {
     console.log('Client is authenticated');
   }
 
-  private static onReady(): void {
+  /**
+   * Callback for when the client is ready.
+   */
+  private onReady(): void {
     console.log('Client is ready');
   }
 
-  private static onDisconnected(): void {
+  /**
+   * Callback for when the client is disconnected.
+   */
+  private onDisconnected(): void {
     console.log('Client is disconnected');
   }
 
-  private static onAuthFailure(): void {
+  /**
+   * Callback for when the client fails authentication.
+   */
+  private onAuthFailure(): void {
     console.log('Client failed authentication');
   }
+  // END OF STANDARD CALLBACKS
 
-  private static async isRegistered(message: any): Promise<boolean> {
-    return await Whatsapp.db.has(message.from);
+  /**
+   * Sends a message to a user.
+   * 
+   * @param msgId The message ID to send to.
+   * @param text The text to send.
+   */
+  private async send(msgId: any, text: string): Promise<void> {
+    await this.client.sendMessage(msgId, `[LeaveSmart] ${text}`);
   }
 
-  private static async reply(message: any, text: string): Promise<void> {
-    await message.reply(`[LeaveSmart] ${text}`);
-  }
-
-  private static async onSubscribe(message: any): Promise<void> {
-    if (await Whatsapp.isRegistered(message)) {
-      await Whatsapp.reply(message, 'Previously registered!');
+  /**
+   * Callback for when a user subscribes to the bot.
+   * Includes an automatic call to onNow.
+   * 
+   * @param message The message object.
+   */
+  private async onSubscribe(message: any): Promise<void> {
+    const msgId: string = message.from;
+    if (await this.isUserRegistered(msgId)) {
+      await this.send(msgId, 'Previously registered!');
     } else {
-      await Whatsapp.db.add(message.from);
-      await Whatsapp.reply(message, 'You are registered! Welcome!');
+      await this.db.add(msgId);
+      await this.send(msgId, 'You are registered! Welcome!');
     }
-    await Whatsapp.onNow(message);
+    await this.onNow(message);
   }
 
-  private static async onUnsubscribe(message: any): Promise<void> {
+  /**
+   * Callback for when a user unsubscribes from the bot.
+   * 
+   * @param message The message object.
+   */
+  private async onUnsubscribe(message: any): Promise<void> {
     // Check if user is already registered
     // If yes, remove user from database and reply "You have been unregistered"
     // If no, reply "Not registered"
-    if (!(await Whatsapp.isRegistered(message))) {
-      await Whatsapp.reply(message, 'Not registered!');
+    const msgId: string = message.from;
+    if (await this.isUserRegistered(msgId)) {
+      await this.db.remove(msgId);
+      await this.send(msgId, 'You have been unregistered');
     } else {
-      await Whatsapp.db.remove(message.from);
-      await Whatsapp.reply(message, 'You have been unregistered');
+      await this.send(msgId, 'Not registered!');
     }
   }
 
-  private static async onNow(message: any): Promise<void> {
+  /**
+   * Callback for when a user requests the current weather forecast.
+   * 
+   * @param message The message object.
+   */
+  private async onNow(message: any): Promise<void> {
     // Get the current weather forecast
-    const forecast = await WeatherAPI.getForecast();
-    await Whatsapp.reply(
-      message,
+    const msgId: string = message.from;
+    const forecast = await this.weatherApi.getForecast();
+    await this.send(
+      msgId,
       `The forecast for Pasir Ris is ${forecast.twohr_forecast}. It is currently ${forecast.rain_status_now ? 'raining' : 'not raining'}`,
     );
   }
 
-  private static async onMessageCreate(message: any) {
-    switch (message.body) {
-      case '/sub':
-        await Whatsapp.onSubscribe(message);
-        break;
-      case '/unsub':
-        await Whatsapp.onUnsubscribe(message);
-        break;
-      case '/now':
-        await Whatsapp.onNow(message);
-        break;
-    }
-  }
-
-  private static alertCondition(forecast: string): boolean {
-    return forecast.includes('Showers') || forecast.includes('Rain');
-  }
-
-  private static async sleep(): Promise<void> {
-    const ms: number = Whatsapp.INTERVALMINS * 60 * 1000;
+  /**
+   * Sleeps for a specified number of minutes.
+   */
+  private async sleep(mins: number): Promise<void> {
+    const ms: number = mins * 60 * 1000;
     await new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private static async watch(): Promise<void> {
-    // TODO: Pub-Sub model in future?
-    // Get weather forecast
-    // If not raining/showers, reset timestamp and sleep
-    // If raining, check if timestamp is outdated
-    // If yes, send updates to all clients and reset timestamp and sleep
-    // If no, sleep
-
-    // Get all clients
-    // Filter clients with outdated timestamp
-    // Send weather forecast to all clients
-    while (true) {
-      const now: Date = new Date();
-      const nowString: string = now.toLocaleTimeString('en-SG', {
-        timeZone: 'Asia/Singapore',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      console.log(`Update: ${nowString}`);
-
-      const forecast: WeatherData = await WeatherAPI.getForecast();
+  /**
+   * Callback for when the bot is watching the weather forecast.
+   */
+  private async onWatch(): Promise<void> {
+    // TODO: Pub-Sub model in future?  
+    while (true) { 
+      const forecast: WeatherData = await this.weatherApi.getForecast();
+      const msgIds: string[] = await this.db.get();
+      console.log(`Update: ${forecast.timestamp.toLocaleTimeString(this.LOCALEARG, this.DTFMTOPTS)}`);
+      
       // Part 1: Two Hr Forecast
-      const isForecastAlert: boolean = Whatsapp.alertCondition(
-        forecast.twohr_forecast,
-      );
-      if (isForecastAlert && !Whatsapp.forecastFlag) {
-        const msgId: string[] = await Whatsapp.db.get();
-        await Promise.all(msgId.map(Whatsapp.onNow));
-      }
-      Whatsapp.forecastFlag = isForecastAlert; // Update rainFlag
+      const isRainAlert: boolean = this.isRainAlert(forecast.twohr_forecast);
+      if (!this.prevForecast && isRainAlert) await Promise.all(msgIds.map(id => this.send(id, 'It will rain in Pasir Ris within 2 hours!')));
+      this.prevForecast = isRainAlert; // Update rainFlag
 
       // Part 2: Current Raining
-      if (forecast.rain_status_now && !Whatsapp.rainFlag) {
-        const msgId: string[] = await Whatsapp.db.get();
-        await Promise.all(
-          msgId.map((id: string) =>
-            Whatsapp.reply(id, 'It has started raining in Pasir Ris!'),
-          ),
-        );
-      }
-      Whatsapp.rainFlag = forecast.rain_status_now; // Update rainFlag
+      const isRaining: boolean = forecast.rain_status_now;
+      if (!this.prevRaining && isRaining) await Promise.all(msgIds.map(id => this.send(id, 'It has started raining in Pasir Ris!')));
+      this.prevRaining = isRaining; // Update rainFlag
 
-      await this.sleep(); // Default: 10 mins because NEA Api updates every 10 mins
+      await this.sleep(this.WATCHINTERVAL); // Default: 10 mins because NEA Api updates every 10 mins
     }
   }
 
-  constructor() {
-    this.client = new Client({authStrategy: new LocalAuth()})
-      .on('qr', Whatsapp.onQr)
-      .on('authenticated', Whatsapp.onAuthenticated)
-      .on('ready', Whatsapp.onReady)
-      .on('disconnected', Whatsapp.onDisconnected)
-      .on('auth_failure', Whatsapp.onAuthFailure)
-      .on('message_create', Whatsapp.onMessageCreate);
-  }
-
-  public async initialize(): Promise<void> {
-    await this.client.initialize();
-    await Whatsapp.watch();
+  /**
+   * Callback for when a message is created.
+   * 
+   * @param message The message object.
+   */
+  private async onMessageCreate(message: any): Promise<void> {
+    switch (message.body) {
+      case '/sub':
+        await this.onSubscribe(message);
+        break;
+      case '/unsub':
+        await this.onUnsubscribe(message);
+        break;
+      case '/now':
+        await this.onNow(message);
+        break;
+      case '/watch':
+        await this.onWatch();
+        break;
+    }
   }
 }
-
-const whatsapp: Whatsapp = new Whatsapp();
-whatsapp.initialize();

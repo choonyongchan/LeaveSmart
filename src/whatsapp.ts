@@ -54,14 +54,15 @@ export class Whatsapp {
   }
 
   /**
-   * Checks if the forecast contains rain.
+   * Checks if the weather forecast contains a rain alert.
    * 
-   * @param forecast The forecast to check.
+   * @param forecast The weather forecast to check.
    * 
-   * @returns True if the forecast contains rain, false otherwise.
+   * @returns True if the forecast contains a rain alert, false otherwise.
    */
-  private isRainAlert(forecast: string): boolean {
-    return forecast.includes('Showers') || forecast.includes('Rain');
+  private isRainAlert(forecast: WeatherData): boolean {
+    const twoHrForecast: string = forecast.twohr_forecast;
+    return twoHrForecast.includes('Showers') || twoHrForecast.includes('Rain');
   }
 
   // STANDARD CALLBACKS FOR WHATSAPP-WEB.JS
@@ -124,10 +125,10 @@ export class Whatsapp {
   private async onSubscribe(message: any): Promise<void> {
     const msgId: string = message.from;
     if (await this.isUserRegistered(msgId)) {
-      await this.send(msgId, 'Previously registered!');
+      await this.send(msgId, 'ℹ️\n Previously registered!');
     } else {
       await this.db.add(msgId);
-      await this.send(msgId, 'You are registered! Welcome!');
+      await this.send(msgId, '✅\n You are registered! Welcome!');
     }
     await this.onNow(message);
   }
@@ -144,10 +145,30 @@ export class Whatsapp {
     const msgId: string = message.from;
     if (await this.isUserRegistered(msgId)) {
       await this.db.remove(msgId);
-      await this.send(msgId, 'You have been unregistered');
+      await this.send(msgId, '✅\n You have been unregistered');
     } else {
-      await this.send(msgId, 'Not registered!');
+      await this.send(msgId, 'ℹ️\n Not registered!');
     }
+  }
+
+  private async sendForecast(msgId: string, forecast: WeatherData): Promise<void> {
+    const isAlertCondition: boolean = this.isRainAlert(forecast);
+    const twoHrForecast: string = forecast.twohr_forecast;
+    const msg: string = (
+      isAlertCondition ? 
+      `🌧️\n Rain Forecast! 2-Hour Forecast: ${twoHrForecast}` : 
+      `ℹ️\n Clear Sky! 2-Hour Forecast: ${twoHrForecast}`);
+    await this.send(msgId, msg);
+  }
+
+  private async sendRainStatus(msgId: string, forecast: WeatherData): Promise<void> {
+    const rainStatus: boolean = forecast.rain_status_now;
+    const msg: string = (
+      rainStatus ? 
+      `🌧️\n Rain Alert! It is currently raining in Pasir Ris!` : 
+      `ℹ️\n Clear Sky! It is not currently raining in Pasir Ris!`
+    );
+    await this.send(msgId, msg);
   }
 
   /**
@@ -157,12 +178,10 @@ export class Whatsapp {
    */
   private async onNow(message: any): Promise<void> {
     // Get the current weather forecast
-    const msgId: string = message.from;
     const forecast = await this.weatherApi.getForecast();
-    await this.send(
-      msgId,
-      `The forecast for Pasir Ris is ${forecast.twohr_forecast}. It is currently ${forecast.rain_status_now ? 'raining' : 'not raining'}`,
-    );
+    const msgId: string = message.from;
+    await this.sendForecast(msgId, forecast);
+    await this.sendRainStatus(msgId, forecast);
   }
 
   /**
@@ -176,21 +195,26 @@ export class Whatsapp {
   /**
    * Callback for when the bot is watching the weather forecast.
    */
-  private async onWatch(): Promise<void> {
-    // TODO: Pub-Sub model in future?  
+  private async onWatch(message: any): Promise<void> {
+    // 5 Cases: Forecast Rain, Forecast No Rain, Raining, Not Raining, No Change  
+    const msgId: string = message.from;
+    this.send(msgId, '👀\n Watching the weather forecast...');
+    //const ADMINS: string[] = [message.from];
+
     while (true) { 
       const forecast: WeatherData = await this.weatherApi.getForecast();
       const msgIds: string[] = await this.db.get();
       console.log(`Update: ${forecast.timestamp.toLocaleTimeString(this.LOCALEARG, this.DTFMTOPTS)}`);
       
-      // Part 1: Two Hr Forecast
-      const isRainAlert: boolean = this.isRainAlert(forecast.twohr_forecast);
-      if (!this.prevForecast && isRainAlert) await Promise.all(msgIds.map(id => this.send(id, 'It will rain in Pasir Ris within 2 hours!')));
+      // Part 1: Two Hr Forecast Trigger
+      const isRainAlert: boolean = this.isRainAlert(forecast);
+      if (this.prevForecast !== isRainAlert) await Promise.all(msgIds.map(id => this.sendForecast(id, forecast))); // Trigger and Stand Down
       this.prevForecast = isRainAlert; // Update rainFlag
+
 
       // Part 2: Current Raining
       const isRaining: boolean = forecast.rain_status_now;
-      if (!this.prevRaining && isRaining) await Promise.all(msgIds.map(id => this.send(id, 'It has started raining in Pasir Ris!')));
+      if (this.prevRaining !== isRaining) await Promise.all(msgIds.map(id => this.sendRainStatus(id, forecast))); // Trigger
       this.prevRaining = isRaining; // Update rainFlag
 
       await this.sleep(this.WATCHINTERVAL); // Default: 10 mins because NEA Api updates every 10 mins
@@ -214,7 +238,7 @@ export class Whatsapp {
         await this.onNow(message);
         break;
       case '/watch':
-        await this.onWatch();
+        await this.onWatch(message);
         break;
     }
   }

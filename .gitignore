@@ -66,3 +66,5 @@ package-lock.json
 *v8.log
 /lib/
 /.wwebjs*
+
+/dist

@@ -146,17 +146,19 @@ class Whatsapp {
     async sendForecast(msgId, forecast) {
         const isAlertCondition = this.isRainAlert(forecast);
         const twoHrForecast = forecast.twohr_forecast;
-        const msg = (isAlertCondition ?
-            `🌧️\n Rain Forecast! 2-Hour Forecast: ${twoHrForecast}` :
-            `ℹ️\n Clear Sky! 2-Hour Forecast: ${twoHrForecast}`);
-        await this.send(msgId, msg);
+        if (isAlertCondition) {
+            const msg = `🌧️\n Rain Forecast! 2-Hour Forecast: ${twoHrForecast}`;
+            await this.send(msgId, msg);
+        }
+        return isAlertCondition;
     }
     async sendRainStatus(msgId, forecast) {
         const rainStatus = forecast.rain_status_now;
-        const msg = (rainStatus ?
-            `🌧️\n Rain Alert! It is currently raining in Pasir Ris!` :
-            `ℹ️\n Clear Sky! It is not currently raining in Pasir Ris!`);
-        await this.send(msgId, msg);
+        if (rainStatus) {
+            const msg = `🌧️\n Rain Alert! It is currently raining in Pasir Ris!`;
+            await this.send(msgId, msg);
+        }
+        return rainStatus;
     }
     /**
      * Callback for when a user requests the current weather forecast.
@@ -167,8 +169,10 @@ class Whatsapp {
         // Get the current weather forecast
         const forecast = await this.weatherApi.getForecast();
         const msgId = message.from;
-        await this.sendForecast(msgId, forecast);
-        await this.sendRainStatus(msgId, forecast);
+        const isForecast = await this.sendForecast(msgId, forecast);
+        const isRainNow = await this.sendRainStatus(msgId, forecast);
+        if (!isForecast && !isRainNow)
+            await this.send(msgId, '🌤️\n No rain forecasted nor currently raining!');
     }
     /**
      * Sleeps for a specified number of minutes.
